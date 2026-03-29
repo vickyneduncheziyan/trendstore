@@ -55,7 +55,7 @@ pipeline {
                 echo "Deploying to EKS cluster..."
                 sh """
                     # Update deployment image to the newly built tag
-                    kubectl set image deployment/trendstore \
+                    kubectl set image deployment/trendstore-deployment \
                         trendstore=${DOCKERHUB_REPO}:${IMAGE_TAG} \
                         --kubeconfig=${KUBECONFIG}
 
@@ -64,7 +64,7 @@ pipeline {
                     kubectl apply -f service.yaml    --kubeconfig=${KUBECONFIG}
 
                     # Wait until rollout completes
-                    kubectl rollout status deployment/trendstore \
+                    kubectl rollout status deployment/trendstore-deployment \
                         --timeout=120s \
                         --kubeconfig=${KUBECONFIG}
                 """
