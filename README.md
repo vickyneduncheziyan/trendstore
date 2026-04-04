@@ -4,7 +4,7 @@ This repository contains the production-ready build files (dist folder) for DevO
 
 It is intentionally structured to help learners focus on CI/CD pipelines, hosting, containerization, and infrastructure setup rather than application development.
 
-📁 What This Repository Contains
+ What This Repository Contains
 
 dist/ – Compiled and production-ready static files
 
