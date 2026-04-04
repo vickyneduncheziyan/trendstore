@@ -60,8 +60,8 @@ pipeline {
                         --kubeconfig=${KUBECONFIG}
 
                     # Apply any manifest changes (deployment + service)
-                    kubectl apply -f deployment.yaml --kubeconfig=${KUBECONFIG}
-                    kubectl apply -f service.yaml    --kubeconfig=${KUBECONFIG}
+                    kubectl apply -f k8s/deployment.yaml --kubeconfig=${KUBECONFIG}
+                    kubectl apply -f k8s/service.yaml    --kubeconfig=${KUBECONFIG}
 
                     # Wait until rollout completes
                     kubectl rollout status deployment/trendstore-deployment \
