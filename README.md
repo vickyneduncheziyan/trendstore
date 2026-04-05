@@ -1,91 +1,197 @@
-DevOps Practice Project – Dist Directory
+# Trendstore DevOps Setup
 
-This repository contains the production-ready build files (dist folder) for DevOps practice and deployment exercises.
+A CI/CD pipeline for the **Trendstore** app using Jenkins, Kubernetes (EKS), Docker, and Prometheus monitoring.
 
-It is intentionally structured to help learners focus on CI/CD pipelines, hosting, containerization, and infrastructure setup rather than application development.
+---
 
- What This Repository Contains
+## 🛠️ Tech Stack
 
-dist/ – Compiled and production-ready static files
+- **CI/CD**: Jenkins
+- **Containerization**: Docker + DockerHub
+- **Orchestration**: AWS EKS (Kubernetes)
+- **Monitoring**: Prometheus + kube-state-metrics
+- **Source Control**: GitHub
 
-HTML
+---
 
-CSS
+## 📁 Repository Structure
 
-JavaScript
+```
+trendstore/
+├── Jenkinsfile
+├── deployment.yaml
+├── service.yaml
+├── Dockerfile
+└── (your app code)
+```
 
-Assets (images, fonts, etc.)
+---
 
-These files are ready to deploy to:
+## 🚀 Setup Guide
 
-Web servers (Nginx / Apache)
+### Step 1 — Push Files to Git Repo
 
-Cloud platforms (AWS S3, Azure Blob, GCP Storage)
+Add `Jenkinsfile`, `deployment.yaml`, `service.yaml`, and `Dockerfile` to the root of your repository.
 
-Containerized environments (Docker + Nginx)
+---
 
-Kubernetes clusters
+### Step 2 — Configure Jenkins Credentials
 
-CI/CD pipeline demonstrations
+Go to **Jenkins → Manage Jenkins → Credentials → (global) → Add Credential** and add:
 
-🎯 Purpose of This Repository
+| Credential      | Kind                  | ID                     |
+|-----------------|-----------------------|------------------------|
+| DockerHub       | Username with password | `dockerhub-credentials` |
+| GitHub          | Username with password | `github-credentials`   |
 
-This repository is designed for:
+> **GitHub PAT**: GitHub → Settings → Developer settings → Personal access tokens → Generate new token → select `repo` scope.
 
-DevOps beginners
+---
 
-CI/CD practice
+### Step 3 — Install Jenkins Plugins
 
-Deployment pipeline testing
+Go to **Jenkins → Manage Jenkins → Plugins → Available** and install:
 
-Docker & Kubernetes deployment exercises
+- Docker Pipeline
+- GitHub Integration Plugin
+- GitHub Plugin
+- Kubernetes CLI Plugin *(optional)*
+- Pipeline
 
-Web server configuration practice
+Restart Jenkins after installing.
 
-Reverse proxy and load balancer setup
+---
 
-The goal is to simulate real-world deployment scenarios using already built application files.
+### Step 4 — Create EKS Cluster
 
-❓ Why is there NO package.json?
+SSH into your EC2 instance and run:
 
-You may notice that this repository does not include:
+```bash
+eksctl create cluster \
+  --name trendstore-cluster \
+  --region us-east-1 \
+  --nodegroup-name trendstore-nodes \
+  --node-type t3.medium \
+  --nodes 2 \
+  --nodes-min 1 \
+  --nodes-max 3 \
+  --managed
 
-package.json
+kubectl get nodes
+```
 
-node_modules
+> ⏱️ Cluster creation takes ~15 minutes.
 
-Source code (src/)
+---
 
-Build tools configuration
+### Step 5 — Give Jenkins Access to kubectl
 
-✅ Reason:
+```bash
+sudo mkdir -p /var/lib/jenkins/.kube
+sudo cp ~/.kube/config /var/lib/jenkins/.kube/config
+sudo chown -R jenkins:jenkins /var/lib/jenkins/.kube
+sudo usermod -aG docker jenkins
+sudo systemctl restart jenkins
 
-This repository only contains the final production build output (dist), not the development source code.
+# Verify
+sudo -u jenkins kubectl get nodes
+```
 
-In a typical project:
+---
 
-Developers write source code.
+### Step 6 — Create Jenkins Pipeline Job
 
-The project is built using tools like:
+1. Jenkins → **New Item** → name it `trendstore` → choose **Pipeline** → OK
+2. Under **Build Triggers** → check ✅ **GitHub hook trigger for GITScm polling**
+3. Under **Pipeline** → set Definition to **Pipeline script from SCM**
+4. Set SCM to **Git**, Repository URL to `https://github.com/<YOUR_USERNAME>/trendstore.git`
+5. Set Credentials to `github-credentials`, Branch to `*/main`, Script Path to `Jenkinsfile`
+6. Click **Save**
 
-Node.js
+---
 
-Webpack
+### Step 7 — Set Up GitHub Webhook
 
-Vite
+Go to your GitHub repo → **Settings → Webhooks → Add webhook**:
 
-React (or other frameworks)
+| Field         | Value                                     |
+|---------------|-------------------------------------------|
+| Payload URL   | `http://<EC2_PUBLIC_IP>:8080/github-webhook/` |
+| Content type  | `application/json`                        |
+| Events        | Just the push event                       |
 
-A dist/ folder is generated.
+Click **Add webhook** — you should see a ✅ green tick.
 
-Only the production build is deployed to servers.
+---
 
-This repository represents step 4 only.
+### Step 8 — First Manual Deploy
 
-Since this is already the compiled output:
+```bash
+kubectl apply -f deployment.yaml
+kubectl apply -f service.yaml
 
-No dependencies are required
+kubectl get pods
+kubectl get svc trendstore-service
+```
 
-No build process is required
+Access the app at: `http://<ELB_HOSTNAME>:3000`
 
-No package.json is needed
+---
+
+### Step 9 — Test the Full Pipeline
+
+```bash
+git add .
+git commit -m "test: trigger CI pipeline"
+git push origin main
+```
+
+This triggers: **webhook → Jenkins → Docker build → DockerHub push → EKS deploy** 🎉
+
+---
+
+## 📊 Monitoring Setup (Prometheus)
+
+Deploy the full monitoring stack:
+
+```bash
+kubectl delete namespace monitoring 2>/dev/null
+sleep 5
+kubectl apply -f prometheus-pod-monitoring.yaml
+
+kubectl wait --for=condition=available --timeout=300s deployment/prometheus -n monitoring
+kubectl wait --for=condition=available --timeout=300s deployment/kube-state-metrics -n monitoring
+
+kubectl get pods -n monitoring
+```
+
+Get the Prometheus URL:
+
+```bash
+kubectl get svc -n monitoring prometheus
+# Open: http://<EXTERNAL-IP>:9090
+```
+
+### Pod Health Alerts Configured
+
+| Alert           | Condition                            | Severity |
+|-----------------|--------------------------------------|----------|
+| PodNotRunning   | Pod not in Running/Succeeded state for 2m | Warning |
+| PodRestarting   | Pod restarting over last 15m         | Warning  |
+| PodNotReady     | Pod not ready for 5m                 | Warning  |
+
+---
+
+## 📋 Quick Reference
+
+| Parameter                     | Value                                      |
+|-------------------------------|--------------------------------------------|
+| DockerHub repo                | `vickyneduncheziyan/trendstore`            |
+| Jenkins credential (Docker)   | `dockerhub-credentials`                    |
+| Jenkins credential (GitHub)   | `github-credentials`                       |
+| App port                      | `3000`                                     |
+| K8s deployment name           | `trendstore`                               |
+| K8s service name              | `trendstore-service`                       |
+| EKS cluster name              | `trendstore-cluster`                       |
+| kubeconfig path (Jenkins)     | `/var/lib/jenkins/.kube/config`            |
+| Webhook URL                   | `http://<EC2_IP>:8080/github-webhook/`     |
